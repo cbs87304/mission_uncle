@@ -11,6 +11,7 @@ import "../styles/components/ArticleBannerStyle.scss";
 
 const url = import.meta.env.VITE_BASE_URL;
 const path = import.meta.env.VITE_API_PATH;
+
 let defaultModalState = {
   author: "",
   create_at: "",
@@ -23,77 +24,44 @@ let defaultModalState = {
   title: "",
   content: "",
 };
+
 function ArticlePage() {
-  //---------用於轉換頁面顯示筆數10轉6
-  const articlesPerPage = 6; // 每頁顯示 6 筆
-  const [apiArticles, setApiArticles] = useState([]); // 存 API 回傳的 10 筆
-  const [displayArticles, setDisplayArticles] = useState([]); // 當前顯示的 6 筆
+  const [apiArticles, setApiArticles] = useState([]);
+  const [displayArticles, setDisplayArticles] = useState([]);
   const [pageInfo, setPageInfo] = useState({
     total_pages: 1,
     current_page: 1,
     has_pre: false,
     has_next: false,
   });
-  //------
 
-  const handlePageChange = useCallback(
-    (page, articlesData = apiArticles) => {
-      if (!articlesData || articlesData.length === 0) {
-        return;
-      }
+  // ✅ 修改處 1：只撈單一頁的資料，不用 while 了
+  const getArticles = useCallback(async (page = 1) => {
+    try {
+      const response = await axios.get(`${url}/api/${path}/articles?page=${page}`);
+      const articles = response.data.articles;
+      const pagination = response.data.pagination;
 
-      const totalArticles = articlesData.length;
-      const totalPages = Math.ceil(totalArticles / articlesPerPage);
-      const startIndex = (page - 1) * articlesPerPage;
-      const endIndex = Math.min(startIndex + articlesPerPage, totalArticles);
-      const paginatedArticles = articlesData.slice(startIndex, endIndex);
-
-      setDisplayArticles(paginatedArticles);
-      setPageInfo({
-        total_pages: totalPages,
-        current_page: page,
-        has_pre: page > 1,
-        has_next: page < totalPages,
-      });
-    },
-    [apiArticles, articlesPerPage]
-  );
-
-  //------
-  //getArticles 取得所有文章
-  const getArticles = useCallback(async () => {
-    let allArticles = [];
-    let page = 1;
-    let hasNext = true;
-
-    while (hasNext) {
-      try {
-        const response = await axios.get(
-          `${url}/api/${path}/articles?page=${page}`
-        );
-        allArticles = [...allArticles, ...response.data.articles];
-        if (!response.data.pagination.has_next) {
-          hasNext = false;
-        } else {
-          page += 1;
-        }
-      } catch (error) {
-        hasNext = false;
-        console.error("Error fetching articles:", error);
-      }
+      setApiArticles(articles);
+      setDisplayArticles(articles); // API 就已經回傳 6 筆，不再做 slice
+      setPageInfo(pagination);
+    } catch (error) {
+      console.error("Error fetching articles:", error);
     }
+  }, []);
 
-    setApiArticles(allArticles);
-    handlePageChange(1, allArticles);
-  }, [handlePageChange]); // 依賴變數
+  // ✅ 修改處 2：分頁切換時重新請求資料
+  const handlePageChange = useCallback((page) => {
+    getArticles(page);
+  }, [getArticles]);
 
+  // ✅ 修改處 3：一開始只撈第一頁
   useEffect(() => {
-    getArticles();
-  }, [getArticles]); // 加入依賴陣列
+    getArticles(1);
+  }, [getArticles]);
 
-  //---------用於轉換頁面顯示筆數10轉6
-  //---------------------------ArticleDetailModal
-  //取得單篇文章content內容
+  // ----------------- 單篇文章 Modal 功能區 -----------------
+
   const getArticle = async (id) => {
     try {
       const response = await axios.get(`${url}/api/${path}/article/${id}`);
@@ -102,24 +70,22 @@ function ArticlePage() {
       alert(error);
     }
   };
-  //ArticleDetailModal關閉狀態
-  const [isArticleDetailModalOpen, setIsArticleDetailModalOpen] =
-    useState(false);
-  //打開ArticleDetailModal關閉狀態
+
+  const [isArticleDetailModalOpen, setIsArticleDetailModalOpen] = useState(false);
+  const [tempArticle, setTempArticle] = useState(defaultModalState);
+
   const handleOpenArticleDetailModal = async (article) => {
     const singleArticle = await getArticle(article.id);
     setTempArticle(singleArticle.article);
     setIsArticleDetailModalOpen(true);
   };
-  //ArticleDetailModal 頁面資料狀態
-  const [tempArticle, setTempArticle] = useState(defaultModalState);
-  //---------------------------ArticleDetailModal
 
   return (
     <>
       <div className="banner d-flex align-items-center justify-content-start">
         <h2 className="text-start banner-title mb-4">精選文章</h2>
       </div>
+
       {/* <!-- 主要內容 -------------------------> */}
       <div className="container my-5">
         <div className="row">
@@ -130,7 +96,7 @@ function ArticlePage() {
                 key={article.id}
                 article={article}
                 handleOpenArticleDetailModal={handleOpenArticleDetailModal}
-              ></Card>
+              />
             ))
           ) : (
             <div
@@ -153,25 +119,25 @@ function ArticlePage() {
             </div>
           )}
         </div>
-        {/* <!-- 分頁 --> */}
-        {displayArticles && displayArticles.length > 0 ? (
+
+        {/* <!-- 分頁元件 --> */}
+        {displayArticles && displayArticles.length > 0 && (
           <Pagination
             pageInfo={pageInfo}
             handlePageChange={handlePageChange}
-          ></Pagination>
-        ) : (
-          ""
+          />
         )}
       </div>
-      {/* <!-- 頁腳 --> */}
-      {/** modal */}
+
+      {/* <!-- Modal 區 --> */}
       <ArticleDetailModal
         tempArticle={tempArticle}
-        getArticles={getArticles}
+        getArticles={() => getArticles(pageInfo.current_page)} // 重新整理目前頁面
         isOpen={isArticleDetailModalOpen}
         setIsOpen={setIsArticleDetailModalOpen}
       />
     </>
   );
 }
+
 export default ArticlePage;
